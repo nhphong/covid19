@@ -1,27 +1,28 @@
 import React, { Component } from 'react';
-import { SafeAreaView, Text, StyleSheet, FlatList, RefreshControl, View } from 'react-native';
-import ToolbarAndroid from '@react-native-community/toolbar-android';
+import { SafeAreaView, Text, StyleSheet, FlatList, RefreshControl, View, ActivityIndicator, Image } from 'react-native';
 import { format } from "date-fns";
 
 export default class App extends Component {
 
   constructor(props) {
     super(props);
-    this.state = { refreshing: false, data: [], updatedAt: 'N/A', queriedAt: 'N/A' };
+    this.state = { refreshing: false, data: [], queriedAt: 'N/A' };
   }
 
-  onRefresh = async () => {
-    // Update refreshing state
-    this.setState((state) => ({refreshing: true, data: state.data, updatedAt: state.updatedAt, queriedAt: state.queriedAt}))
+  onRefresh = async (showLoading) => {
+    if (showLoading == true) {
+      // Update refreshing state
+      this.setState((state) => ({refreshing: true, data: state.data, updatedAt: state.updatedAt, queriedAt: state.queriedAt}))
+    }
 
     // Fetch new data
     try {
       let response = await fetch(url);
       let responseJson = await response.json();
+      //let responseJson = mockApiData;
       this.setState({
         refreshing: false,
-        data: responseJson.Countries.sort((x, y) => (y.TotalConfirmed - x.TotalConfirmed)),
-        updatedAt: responseJson.Date.replace("T", " ").split(".")[0],
+        data: responseJson.sort((x, y) => (y.cases - x.cases)),
         queriedAt: format(new Date(), "yyyy-MM-dd hh:mm:ss")
       })
     } catch (error) {
@@ -29,10 +30,17 @@ export default class App extends Component {
     }
   };
 
-  onSearch() {}
-
   componentDidMount() {
-    this.onRefresh();
+    this.onRefresh(false);
+  }
+
+  renderToolbar() {
+    return(
+      <SafeAreaView style={styles.toolbar}>
+          <Text style={styles.toolbarTitle}>Covid19 Statistics</Text>
+          <Image style={styles.toolbarButton} source={require('./ic_search.png')}/>
+      </SafeAreaView>
+    );
   }
 
   renderHeader() {
@@ -40,9 +48,9 @@ export default class App extends Component {
       <SafeAreaView style={styles.header}>
           <Text style={styles.headerItem}>Country</Text>
           <Text style={styles.headerItem}>Total Cases</Text>
-          <Text style={styles.headerItem}>New Cases</Text>
+          <Text style={styles.headerItem}>Today Cases</Text>
           <Text style={styles.headerItem}>Total Deaths</Text>
-          <Text style={styles.headerItem}>New Deaths</Text>
+          <Text style={styles.headerItem}>Today Deaths</Text>
           <Text style={styles.headerItem}>Total Recovered</Text>
       </SafeAreaView>
     );
@@ -51,12 +59,12 @@ export default class App extends Component {
   renderItem(item) {
     return(
       <SafeAreaView style={styles.listItem}>
-          <Text style={styles.number}>{item.Country}</Text>
-          <Text style={styles.number}>{numberWithCommas(item.TotalConfirmed)}</Text>
-          <Text style={styles.number}>+{numberWithCommas(item.NewConfirmed)}</Text>
-          <Text style={styles.death}>{numberWithCommas(item.TotalDeaths)}</Text>
-          <Text style={styles.death}>+{numberWithCommas(item.NewDeaths)}</Text>
-          <Text style={styles.number}>{numberWithCommas(item.TotalRecovered)}</Text>
+          <Text style={styles.number}>{item.country}</Text>
+          <Text style={styles.number}>{numberWithCommas(item.cases)}</Text>
+          <Text style={styles.number}>+{numberWithCommas(item.todayCases)}</Text>
+          <Text style={styles.death}>{numberWithCommas(item.deaths)}</Text>
+          <Text style={styles.death}>+{numberWithCommas(item.todayDeaths)}</Text>
+          <Text style={styles.number}>{numberWithCommas(item.recovered)}</Text>
         </SafeAreaView>
     );
   }
@@ -69,31 +77,41 @@ export default class App extends Component {
 
   renderRefreshControl() {
     return(
-      <RefreshControl refreshing={this.state.refreshing} onRefresh={this.onRefresh} />
+      <RefreshControl
+        refreshing={this.state.refreshing} 
+        onRefresh={() => { this.onRefresh(true) }} 
+      />
     );
   }
 
   render() {
+    if (!this.state.data.length) {
+      return(
+        <SafeAreaView style={styles.container}>
+          { this.renderToolbar() }
+          <ActivityIndicator style={{flex: 1, alignSelf: 'center'}}/>
+        </SafeAreaView>
+      );
+    }
+
     return(
       <SafeAreaView style={styles.container}>
-        <ToolbarAndroid 
-          style={styles.toolbar}
-          actions={[{title: 'Search', icon: require('./ic_search.png'), show: 'always'}]}
-          onActionSelected={this.onSearch}>
-            <Text style={styles.toolbarTitle}>Covid Statistics</Text>
-        </ToolbarAndroid>
+        { this.renderToolbar() }
 
         <SafeAreaView style={styles.info}>
-          <Text style={styles.infoText}>Queried at: {this.state.queriedAt}</Text>
-          <Text style={styles.infoText}>Updated at: {this.state.updatedAt}</Text>
+          <SafeAreaView style={{flexDirection: 'row', justifyContent: 'space-between'}}>
+            <Text style={styles.infoText}>Data queried at</Text>
+            <Text style={styles.infoText}>{this.state.queriedAt}</Text>
+          </SafeAreaView>
         </SafeAreaView>
+
+        {this.renderHeader()}
 
         <FlatList
           data={this.state.data}
-          ListHeaderComponent={this.renderHeader()}
           ItemSeparatorComponent={this.renderSeparator}
           renderItem={({item}) => this.renderItem(item)}
-          keyExtractor={({Country}, index) => Country}
+          keyExtractor={({country}, index) => country}
           refreshControl={this.renderRefreshControl()}
           contentContainerStyle={styles.list}
         />
@@ -105,25 +123,39 @@ export default class App extends Component {
 const styles = StyleSheet.create({
   toolbar: {
     backgroundColor: '#1e80f0',
-    height: 60,
+    height: 55,
     shadowColor: 'black',
-    elevation: 5
+    elevation: 5,
+    flexDirection: 'row',
+    justifyContent: 'space-between'
   },
   toolbarTitle: {
     color: 'white',
-    fontSize: 20,
-    fontWeight: 'bold'
+    fontSize: 22,
+    fontWeight: 'bold',
+    alignSelf: 'center',
+    marginStart: 10
+  },
+  toolbarButton: {
+    width: 33, 
+    height: 33,
+    alignSelf: 'center',
+    marginEnd: 10
   },
   container: {
     flex: 1,
     backgroundColor: '#f9f9f9'
   },
   info: {
+      height: 30,
       backgroundColor: '#1396f0',
-      padding: 10
+      justifyContent: 'center',
+      paddingStart: 10,
+      paddingEnd: 10
   },
   infoText: {
-    color: 'white'
+    color: 'white',
+    fontStyle: 'italic'
   },
   header: {
     height: 70,
@@ -135,14 +167,17 @@ const styles = StyleSheet.create({
     color: 'white',
     textAlign: 'center',
     textAlignVertical: 'center',
-    padding: 10
+    alignSelf: 'center',
+    paddingStart: 10,
+    paddingTop: 10,
+    paddingEnd: 10,
+    paddingBottom: 10
   },
   list: {},
   listItem: {
-    flex: 6.5,
+    flex: 1,
     flexDirection: 'row',
-    paddingTop: 12,
-    paddingBottom: 12,
+    height: 40,
     paddingStart: 3,
     paddingEnd: 3,
     backgroundColor: 'white'
@@ -154,13 +189,15 @@ const styles = StyleSheet.create({
   number: {
     flex: 1,
     textAlign: 'center',
-    textAlignVertical: 'center'
+    textAlignVertical: 'center',
+    alignSelf: 'center'
   },
   death: {
     flex: 1,
     color: 'red',
     textAlign: 'center',
-    textAlignVertical: 'center'
+    textAlignVertical: 'center',
+    alignSelf: 'center'
   }
 });
 
@@ -168,4 +205,4 @@ function numberWithCommas(x) {
   return x.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 }
 
-const url = 'https://api.covid19api.com/summary';
+const url = 'https://coronavirus-19-api.herokuapp.com/countries';
